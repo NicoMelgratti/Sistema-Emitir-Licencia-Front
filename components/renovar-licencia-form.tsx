@@ -1,0 +1,645 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ArrowLeft, Search, CheckCircle2, AlertCircle, Edit, Calendar, FileText } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import { licenciasEmitidas } from "@/data/licencia-data"
+import gsap from "gsap"
+
+// Importar las funciones y datos de clases de licencias
+import { calcularVigencia, calcularCosto, calcularFechaVencimiento } from "@/data/clases-licencia"
+import { useStats } from "@/contexts/stats-context"
+
+// Actualizar la interfaz de props para incluir los nuevos parámetros
+interface RenovarLicenciaFormProps {
+  role: string
+  initialTipoDocumento?: string
+  initialNumeroDocumento?: string
+  autoSearch?: boolean
+}
+
+// Actualizar el componente para usar los nuevos parámetros
+export default function RenovarLicenciaForm({
+  role,
+  initialTipoDocumento = "",
+  initialNumeroDocumento = "",
+  autoSearch = false,
+}: RenovarLicenciaFormProps) {
+  const router = useRouter()
+  const [tipoDocumento, setTipoDocumento] = useState<string>(initialTipoDocumento)
+  const [numeroDocumento, setNumeroDocumento] = useState<string>(initialNumeroDocumento)
+  const [licenciasEncontradas, setLicenciasEncontradas] = useState<typeof licenciasEmitidas>([])
+  const [licenciaSeleccionada, setLicenciaSeleccionada] = useState<(typeof licenciasEmitidas)[0] | null>(null)
+  const [error, setError] = useState<string>("")
+  const [success, setSuccess] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [editMode, setEditMode] = useState<boolean>(false)
+  const [nuevaVigencia, setNuevaVigencia] = useState<number>(0)
+  const [nuevoCosto, setNuevoCosto] = useState<number>(0)
+  const [autoSearchExecuted, setAutoSearchExecuted] = useState<boolean>(false)
+  const [animationExecuted, setAnimationExecuted] = useState<boolean>(false)
+
+  const formRef = useRef<HTMLDivElement>(null)
+  const busquedaRef = useRef<HTMLDivElement>(null)
+  const datosRef = useRef<HTMLDivElement>(null)
+  const renovacionRef = useRef<HTMLDivElement>(null)
+  const buscarBtnRef = useRef<HTMLButtonElement>(null)
+  const licenciasListRef = useRef<HTMLDivElement>(null)
+
+  // Obtener la función para incrementar licencias emitidas
+  const { incrementLicenciasEmitidas } = useStats()
+
+  // Añadir un useEffect para realizar la búsqueda automática
+  useEffect(() => {
+    if (autoSearch && initialTipoDocumento && initialNumeroDocumento && !autoSearchExecuted) {
+      setAutoSearchExecuted(true)
+      buscarLicencia()
+    }
+  }, [autoSearch, initialTipoDocumento, initialNumeroDocumento, autoSearchExecuted])
+
+  useEffect(() => {
+    // Animación inicial del formulario - solo ejecutar una vez
+    if (formRef.current && !animationExecuted) {
+      gsap.fromTo(formRef.current, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" })
+      setAnimationExecuted(true)
+    }
+  }, [animationExecuted])
+
+  // Manejar cambio en el tipo de documento
+  const handleTipoDocumentoChange = (value: string) => {
+    setTipoDocumento(value)
+    setNumeroDocumento("") // Limpiar el campo al cambiar el tipo
+    setLicenciasEncontradas([]) // Limpiar licencias encontradas
+    setLicenciaSeleccionada(null) // Limpiar licencia seleccionada
+  }
+
+  // Manejar cambio en el número de documento
+  const handleNumeroDocumentoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+
+    if (tipoDocumento === "DNI") {
+      // Para DNI, solo permitir números
+      const onlyNumbers = value.replace(/[^0-9]/g, "")
+      setNumeroDocumento(onlyNumbers)
+    } else if (tipoDocumento === "Pasaporte") {
+      // Para Pasaporte, convertir a mayúsculas
+      setNumeroDocumento(value.toUpperCase())
+    } else {
+      // Si no hay tipo seleccionado, permitir cualquier entrada
+      setNumeroDocumento(value)
+    }
+
+    // Limpiar licencias encontradas y seleccionada al cambiar el número
+    setLicenciasEncontradas([])
+    setLicenciaSeleccionada(null)
+  }
+
+  // Función para buscar licencias
+  const buscarLicencia = () => {
+    setError("")
+    setLicenciasEncontradas([])
+    setLicenciaSeleccionada(null)
+    setIsLoading(true)
+
+    if (!tipoDocumento || !numeroDocumento) {
+      setError("Debe completar tipo y número de documento")
+      setIsLoading(false)
+      // Animación de error mejorada
+      if (busquedaRef.current) {
+        gsap.fromTo(
+          busquedaRef.current,
+          { x: -8 },
+          { x: 8, duration: 0.1, repeat: 5, yoyo: true, ease: "power2.inOut" },
+        )
+      }
+      return
+    }
+
+    // Simular una pequeña demora para mostrar el estado de carga
+    setTimeout(() => {
+      // Buscar todas las licencias del titular en la base de datos simulada
+      const licenciasDelTitular = licenciasEmitidas.filter(
+        (licencia) =>
+          licencia.titular.tipoDocumento === tipoDocumento && licencia.titular.numeroDocumento === numeroDocumento,
+      )
+
+      if (licenciasDelTitular.length === 0) {
+        setError("No se encontraron licencias asociadas a este documento")
+        setIsLoading(false)
+        // Animación de error mejorada
+        if (busquedaRef.current) {
+          gsap.fromTo(
+            busquedaRef.current,
+            { x: -8 },
+            { x: 8, duration: 0.1, repeat: 5, yoyo: true, ease: "power2.inOut" },
+          )
+        }
+        return
+      }
+
+      // Animación al encontrar licencias
+      if (busquedaRef.current) {
+        gsap.to(busquedaRef.current.querySelectorAll("input, select, button"), {
+          scale: 1.03,
+          duration: 0.2,
+          stagger: 0.05,
+          yoyo: true,
+          repeat: 1,
+          onComplete: () => {
+            gsap.to(busquedaRef.current, {
+              y: -10,
+              opacity: 0.8,
+              duration: 0.3,
+              onComplete: () => {
+                setLicenciasEncontradas(licenciasDelTitular)
+                setIsLoading(false)
+
+                // Animar la aparición de la lista de licencias
+                setTimeout(() => {
+                  if (licenciasListRef.current) {
+                    gsap.fromTo(
+                      licenciasListRef.current,
+                      { opacity: 0, y: 20 },
+                      { opacity: 1, y: 0, duration: 0.5, ease: "back.out(1.2)" },
+                    )
+                  }
+                }, 100)
+              },
+            })
+          },
+        })
+      } else {
+        setLicenciasEncontradas(licenciasDelTitular)
+        setIsLoading(false)
+      }
+    }, 500)
+  }
+
+  // Función para seleccionar una licencia
+  const seleccionarLicencia = (licencia: (typeof licenciasEmitidas)[0]) => {
+    setLicenciaSeleccionada(licencia)
+
+    // Verificar si la licencia está vencida o próxima a vencer
+    const fechaVencimiento = new Date(licencia.fechaVencimiento)
+    const hoy = new Date()
+
+    // Permitir renovación si está vencida o a menos de 6 meses de vencer
+    const seisMesesDespues = new Date(hoy)
+    seisMesesDespues.setMonth(hoy.getMonth() + 6)
+
+    if (fechaVencimiento > seisMesesDespues) {
+      setError(
+        "Esta licencia no puede renovarse aún. Solo se pueden renovar licencias vencidas o a menos de 6 meses de vencer.",
+      )
+      setLicenciaSeleccionada(null)
+      return
+    }
+
+    // Calcular nueva vigencia y costo
+    calcularVigenciaYCosto(licencia)
+
+    // Animar la aparición de los datos de la licencia
+    setTimeout(() => {
+      if (datosRef.current) {
+        gsap.fromTo(datosRef.current, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "back.out(1.2)" })
+      }
+    }, 100)
+
+    // Activar automáticamente el modo de edición
+    setTimeout(() => {
+      setEditMode(true)
+    }, 500)
+  }
+
+  // Calcular nueva vigencia y costo
+  const calcularVigenciaYCosto = (licencia: (typeof licenciasEmitidas)[0]) => {
+    // Determinar si es primera vez (para renovación siempre es false)
+    const esPrimeraVez = false
+
+    // Calcular vigencia según edad
+    const vigenciaCalculada = calcularVigencia(licencia.titular.edad, esPrimeraVez)
+
+    // Calcular costo según clase y vigencia (sin aplicar descuento por renovación)
+    const costoCalculado = calcularCosto(licencia.claseLicencia, vigenciaCalculada, false)
+
+    setNuevaVigencia(vigenciaCalculada)
+    setNuevoCosto(costoCalculado)
+  }
+
+  // Confirmar renovación
+  const renovarLicencia = () => {
+    try {
+      // Calcular fecha de vencimiento basada en la fecha de nacimiento
+      const fechaVencimiento = calcularFechaVencimiento(licenciaSeleccionada.titular.fechaNacimiento, nuevaVigencia)
+
+      // En producción, aquí se enviarían los datos al backend
+      console.log({
+        licenciaOriginal: licenciaSeleccionada,
+        nuevaClase: licenciaSeleccionada.claseLicencia,
+        nuevaDireccion: licenciaSeleccionada.titular.direccion,
+        nuevoDonanteOrganos: licenciaSeleccionada.titular.donanteOrganos,
+        vigencia: nuevaVigencia,
+        costo: nuevoCosto,
+        fechaRenovacion: new Date().toISOString(),
+        fechaVencimiento,
+        usuarioAdmin: role,
+      })
+
+      // Incrementar el contador de licencias emitidas
+      incrementLicenciasEmitidas()
+
+      // Mostrar mensaje de éxito
+      setSuccess(true)
+
+      // Redireccionar después de 2 segundos
+      setTimeout(() => {
+        router.push(`/dashboard/licencias/imprimir?role=${role}`)
+      }, 2000)
+    } catch (error) {
+      console.error("Error al renovar licencia:", error)
+      setError("Ocurrió un error al renovar la licencia. Por favor, intente nuevamente.")
+    }
+  }
+
+  // Formatear fecha
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  }
+
+  // Verificar si la licencia está vencida
+  const isLicenciaVencida = (fechaVencimiento: string) => {
+    const vencimiento = new Date(fechaVencimiento)
+    const hoy = new Date()
+    return vencimiento < hoy
+  }
+
+  // Obtener el estado de la licencia para mostrar el badge
+  const getLicenciaEstado = (fechaVencimiento: string) => {
+    const vencimiento = new Date(fechaVencimiento)
+    const hoy = new Date()
+
+    // Si está vencida
+    if (vencimiento < hoy) {
+      return { text: "Vencida", variant: "destructive" as const }
+    }
+
+    // Si vence en menos de 30 días
+    const treintaDias = new Date(hoy)
+    treintaDias.setDate(hoy.getDate() + 30)
+    if (vencimiento < treintaDias) {
+      return { text: "Próxima a vencer", variant: "warning" as const }
+    }
+
+    // Si vence en menos de 6 meses
+    const seisMeses = new Date(hoy)
+    seisMeses.setMonth(hoy.getMonth() + 6)
+    if (vencimiento < seisMeses) {
+      return { text: "Renovable", variant: "outline" as const }
+    }
+
+    // Si no está próxima a vencer
+    return { text: "Vigente", variant: "secondary" as const }
+  }
+
+  // Volver a la lista de licencias
+  const volverALista = () => {
+    setLicenciaSeleccionada(null)
+    setEditMode(false)
+
+    // Animar la aparición de la lista de licencias
+    setTimeout(() => {
+      if (licenciasListRef.current) {
+        gsap.fromTo(
+          licenciasListRef.current,
+          { opacity: 0, y: 20 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "back.out(1.2)" },
+        )
+      }
+    }, 100)
+  }
+
+  return (
+    <Card className="w-full">
+      <CardContent className="pt-6" ref={formRef}>
+        {success ? (
+          <Alert className="bg-emerald-500/10 border-emerald-500/30 mb-4 text-emerald-300">
+            <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+            <AlertDescription className="text-emerald-300">
+              Licencia renovada correctamente. Redirigiendo a impresión...
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-6">
+            <div className="space-y-4" ref={busquedaRef}>
+              <h2 className="text-xl font-semibold dark:text-white">Buscar Licencias por Documento</h2>
+
+              {error && (
+                <Alert className="bg-rose-500/10 border-rose-500/30 text-rose-300">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="tipoDocumento">Tipo de Documento</Label>
+                  <Select value={tipoDocumento} onValueChange={handleTipoDocumentoChange}>
+                    <SelectTrigger id="tipoDocumento">
+                      <SelectValue placeholder="Seleccionar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DNI">DNI</SelectItem>
+                      <SelectItem value="Pasaporte">Pasaporte</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="numeroDocumento">Número de Documento</Label>
+                  <Input
+                    id="numeroDocumento"
+                    value={numeroDocumento}
+                    onChange={handleNumeroDocumentoChange}
+                    placeholder="Ingrese número"
+                    maxLength={tipoDocumento === "DNI" ? 8 : 9}
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <Button
+                    ref={buscarBtnRef}
+                    onClick={buscarLicencia}
+                    className="w-full transition-transform duration-300 hover:scale-105"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center">
+                        <svg
+                          className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        Buscando...
+                      </span>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-2" />
+                        Buscar
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {licenciasEncontradas.length > 0 && !licenciaSeleccionada && (
+              <>
+                <Separator className="dark:bg-slate-700" />
+
+                <div className="space-y-4" ref={licenciasListRef}>
+                  <h2 className="text-xl font-semibold dark:text-white">
+                    Licencias Encontradas ({licenciasEncontradas.length})
+                  </h2>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {licenciasEncontradas.map((licencia) => {
+                      const estado = getLicenciaEstado(licencia.fechaVencimiento)
+                      return (
+                        <div
+                          key={licencia.numeroLicencia}
+                          className="border rounded-lg p-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          onClick={() => seleccionarLicencia(licencia)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-medium text-lg">
+                                Licencia Clase {licencia.claseLicencia}
+                                <Badge variant={estado.variant} className="ml-2">
+                                  {estado.text}
+                                </Badge>
+                              </h3>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {licencia.titular.nombreApellido} - {licencia.titular.tipoDocumento}{" "}
+                                {licencia.titular.numeroDocumento}
+                              </p>
+                              <div className="mt-2 flex items-center gap-4">
+                                <div className="flex items-center text-sm">
+                                  <FileText className="h-3.5 w-3.5 mr-1 text-slate-400" />
+                                  N°: {licencia.numeroLicencia}
+                                </div>
+                                <div className="flex items-center text-sm">
+                                  <Calendar className="h-3.5 w-3.5 mr-1 text-slate-400" />
+                                  Vence: {formatDate(licencia.fechaVencimiento)}
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant={isLicenciaVencida(licencia.fechaVencimiento) ? "destructive" : "outline"}
+                              className="ml-2"
+                            >
+                              <Edit className="h-3.5 w-3.5 mr-1" />
+                              Renovar
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {licenciaSeleccionada && (
+              <>
+                <Separator className="dark:bg-slate-700" />
+
+                <div className="space-y-4" ref={datosRef}>
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-semibold dark:text-white">Datos de la Licencia a Renovar</h2>
+                    <Badge
+                      variant={isLicenciaVencida(licenciaSeleccionada.fechaVencimiento) ? "destructive" : "outline"}
+                      className="ml-2"
+                    >
+                      {isLicenciaVencida(licenciaSeleccionada.fechaVencimiento) ? "Vencida" : "Vigente"}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Titular</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        {licenciaSeleccionada.titular.nombreApellido}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Documento</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        {licenciaSeleccionada.titular.tipoDocumento} {licenciaSeleccionada.titular.numeroDocumento}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Clase de Licencia</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        Clase {licenciaSeleccionada.claseLicencia}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Número de Licencia</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        {licenciaSeleccionada.numeroLicencia}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Fecha de Emisión</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        {formatDate(licenciaSeleccionada.fechaEmision)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Fecha de Vencimiento</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        {formatDate(licenciaSeleccionada.fechaVencimiento)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Dirección</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        {licenciaSeleccionada.titular.direccion}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>Donante de Órganos</Label>
+                      <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                        {licenciaSeleccionada.titular.donanteOrganos}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <Button
+                      onClick={volverALista}
+                      variant="outline"
+                      className="transition-transform duration-300 hover:scale-105"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Volver a la lista
+                    </Button>
+
+                    <Button
+                      onClick={() => setEditMode(true)}
+                      variant="outline"
+                      className="transition-transform duration-300 hover:scale-105"
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Renovar Licencia
+                    </Button>
+                  </div>
+                </div>
+
+                {editMode && (
+                  <>
+                    <Separator className="dark:bg-slate-700" />
+
+                    <div className="space-y-4" ref={renovacionRef}>
+                      <h2 className="text-xl font-semibold dark:text-white">Renovación de Licencia</h2>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Nueva Vigencia</Label>
+                          <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">{nuevaVigencia} años</div>
+                        </div>
+
+                        <div>
+                          <Label>Costo de Renovación</Label>
+                          <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md">
+                            ${nuevoCosto} (incluye gastos administrativos)
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Nueva Fecha de Vencimiento</Label>
+                          <div className="p-2 bg-slate-900/60 border border-slate-700 text-slate-200 shadow-inner rounded-md flex items-center gap-1">
+                            <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                            {formatDate(
+                              calcularFechaVencimiento(licenciaSeleccionada.titular.fechaNacimiento, nuevaVigencia),
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-4 mt-6">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setEditMode(false)}
+                          className="transition-transform duration-300 hover:scale-105"
+                        >
+                          Cancelar
+                        </Button>
+                        <Button onClick={renovarLicencia} className="transition-transform duration-300 hover:scale-105">
+                          Confirmar Renovación
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="flex justify-end mt-6">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push(`/dashboard?role=${role}`)}
+                className="transition-transform duration-300 hover:scale-105"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Volver
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
