@@ -57,7 +57,7 @@ interface DatosFormulario {
 }
 
 // URL base de la API
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.sistema-licencias.gob.ar"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
 
 // Función para obtener los headers de autenticación
 const getAuthHeaders = () => {
